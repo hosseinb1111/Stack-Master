@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, viewport-fit=cover">
+    <title>Stack Master — Precision Stacking Game</title>
+    <style>
+        * {
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        html, body {
+            margin: 0;
+            overflow: hidden;
+            height: 100%;
+            width: 100%;
+            position: relative;
+            font-family: 'Comfortaa', cursive;
+            touch-action: manipulation; /* improve touch responsiveness */
+        }
+
+        #container {
+            width: 100%;
+            height: 100%;
+        }
+
+        #container #score {
+            position: absolute;
+            top: 20px;
+            width: 100%;
+            text-align: center;
+            font-size: 10vh;
+            transition: transform 0.5s ease;
+            color: #333344;
+            transform: translateY(-200px) scale(1);
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+            letter-spacing: 2px;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        #container #game {
+            position: absolute;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            left: 0;
+        }
+
+        #container .game-over {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 85%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+            z-index: 20;
+        }
+
+        #container .game-over * {
+            transition: opacity 0.5s ease, transform 0.5s ease;
+            opacity: 0;
+            transform: translateY(-50px);
+            color: #1e2a3a;
+        }
+
+        #container .game-over h2 {
+            margin: 0;
+            padding: 0;
+            font-size: 48px;
+            font-weight: 800;
+        }
+
+        #container .game-over p {
+            font-size: 18px;
+            margin: 8px 0;
+        }
+
+        #container .game-ready {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-around;
+            pointer-events: none;
+            z-index: 20;
+        }
+
+        #container .game-ready #start-button {
+            transition: opacity 0.5s ease, transform 0.5s ease;
+            opacity: 0;
+            transform: translateY(-50px);
+            border: 3px solid #1e2a3a;
+            padding: 12px 28px;
+            background-color: rgba(30,42,58,0.85);
+            color: white;
+            font-size: 28px;
+            border-radius: 48px;
+            cursor: pointer;
+            backdrop-filter: blur(4px);
+            font-weight: bold;
+            letter-spacing: 1px;
+            pointer-events: auto;
+            transition: all 0.2s ease;
+        }
+        #container .game-ready #start-button:hover {
+            background-color: #1e2a3a;
+            transform: scale(1.02);
+        }
+
+        #container #instructions {
+            position: absolute;
+            width: 100%;
+            top: 18vh;
+            left: 0;
+            text-align: center;
+            transition: opacity 0.5s ease, transform 0.5s ease;
+            opacity: 0;
+            font-size: 1.2rem;
+            font-weight: 500;
+            background: rgba(0,0,0,0.5);
+            backdrop-filter: blur(6px);
+            padding: 8px 16px;
+            width: auto;
+            left: 50%;
+            transform: translateX(-50%);
+            border-radius: 40px;
+            color: white;
+            white-space: nowrap;
+            pointer-events: none;
+            z-index: 15;
+        }
+
+        #container #instructions.hide {
+            opacity: 0 !important;
+            visibility: hidden;
+        }
+
+        #container.playing #score, #container.resetting #score {
+            transform: translateY(0px) scale(1);
+        }
+
+        #container.playing #instructions {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        #container.ready .game-ready #start-button {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        #container.ended #score {
+            transform: translateY(6vh) scale(1.5);
+            color: #b91c1c;
+        }
+
+        #container.ended .game-over * {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        #container.ended .game-over p {
+            transition-delay: 0.3s;
+        }
+
+        /* responsive text */
+        @media (max-width: 600px) {
+            #container #instructions {
+                font-size: 0.9rem;
+                white-space: nowrap;
+                top: 14vh;
+            }
+            #container .game-over h2 {
+                font-size: 32px;
+            }
+        }
+    </style>
+    <!-- Three.js CDN (r83 stable) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r83/three.min.js"></script>
+    <!-- GSAP TweenMax (same version as original) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/1.18.0/TweenMax.min.js"></script>
+</head>
+<body>
+<div id="container">
+    <div id="game"></div>
+    <div id="score">0</div>
+    <div id="instructions">⬆️ Click / Tap — place the block ⬆️</div>
+    <div class="game-over">
+        <h2>⚡ GAME OVER ⚡</h2>
+        <p>Fantastic effort! Stack even higher next time.</p>
+        <p>👇 Click or press space to restart 👇</p>
+    </div>
+    <div class="game-ready">
+        <div id="start-button">▶ START GAME ◀</div>
+        <div></div>
+    </div>
+</div>
+
+<script>
+    (function(){
+        // ---------- FIXED & POLISHED STACKING GAME ----------
+        console.clear();
+
+        // helper: prevent double placement with cooldown
+        let globalCooldown = false;
+        function withCooldown(fn, delayMs = 150) {
+            if(globalCooldown) return false;
+            globalCooldown = true;
+            fn();
+            setTimeout(() => { globalCooldown = false; }, delayMs);
+            return true;
+        }
+
+        // ---------- STAGE (Three.js setup) ----------
+        class Stage {
+            constructor() {
+                this.container = document.getElementById('game');
+                // renderer
+                this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setClearColor('#D0CBC7', 1);
+                this.container.appendChild(this.renderer.domElement);
+                // scene
+                this.scene = new THREE.Scene();
+                // camera (orthographic)
+                let aspect = window.innerWidth / window.innerHeight;
+                let d = 20;
+                this.camera = new THREE.OrthographicCamera(-d * aspect, d * aspect, d, -d, -100, 1000);
+                this.camera.position.set(2, 2, 2);
+                this.camera.lookAt(0, 0, 0);
+                // lights
+                this.light = new THREE.DirectionalLight(0xffffff, 0.6);
+                this.light.position.set(0, 8, 4);
+                this.scene.add(this.light);
+                this.softLight = new THREE.AmbientLight(0xffffff, 0.45);
+                this.scene.add(this.softLight);
+                // extra fill light
+                const fillLight = new THREE.PointLight(0xccaa88, 0.3);
+                fillLight.position.set(2, 3, 2);
+                this.scene.add(fillLight);
+
+                window.addEventListener('resize', () => this.onResize());
+                this.onResize();
+            }
+
+            onResize() {
+                let viewSize = 30;
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.camera.left = -window.innerWidth / viewSize;
+                this.camera.right = window.innerWidth / viewSize;
+                this.camera.top = window.innerHeight / viewSize;
+                this.camera.bottom = -window.innerHeight / viewSize;
+                this.camera.updateProjectionMatrix();
+            }
+
+            add(elem) { this.scene.add(elem); }
+            remove(elem) { this.scene.remove(elem); }
+            render() { this.renderer.render(this.scene, this.camera); }
+
+            setCamera(targetY, speed = 0.3) {
+                TweenLite.to(this.camera.position, speed, { y: targetY + 4, ease: Power1.easeInOut });
+                // animate lookAt by updating a dummy object
+                const target = { y: 0 };
+                TweenLite.to(target, speed, { y: targetY, ease: Power1.easeInOut, onUpdate: () => {
+                    this.camera.lookAt(new THREE.Vector3(0, target.y, 0));
+                }});
+            }
+        }
+
+        // ---------- BLOCK ----------
+        class Block {
+            constructor(prevBlock) {
+                this.STATES = { ACTIVE: 'active', STOPPED: 'stopped', MISSED: 'missed' };
+                this.MOVE_AMOUNT = 12;
+                this.dimension = { width: 0, height: 0, depth: 0 };
+                this.position = { x: 0, y: 0, z: 0 };
+                this.targetBlock = prevBlock;
+                this.index = (this.targetBlock ? this.targetBlock.index : 0) + 1;
+                this.workingPlane = this.index % 2 === 0 ? 'x' : 'z';
+                this.workingDimension = this.index % 2 === 0 ? 'width' : 'depth';
+
+                // inherit or default dimensions
+                if (this.targetBlock) {
+                    this.dimension.width = this.targetBlock.dimension.width;
+                    this.dimension.height = this.targetBlock.dimension.height;
+                    this.dimension.depth = this.targetBlock.dimension.depth;
+                    this.position.x = this.targetBlock.position.x;
+                    this.position.z = this.targetBlock.position.z;
+                } else {
+                    this.dimension.width = 10;
+                    this.dimension.height = 2;
+                    this.dimension.depth = 10;
+                    this.position.x = 0;
+                    this.position.z = 0;
+                }
+                this.position.y = this.dimension.height * this.index;
+                this.colorOffset = this.targetBlock ? this.targetBlock.colorOffset : Math.round(Math.random() * 100);
+
+                // color generation (vibrant pastel)
+                if (!this.targetBlock) {
+                    this.color = 0x333344;
+                } else {
+                    let offset = this.index + this.colorOffset;
+                    let r = Math.sin(0.3 * offset) * 55 + 200;
+                    let g = Math.sin(0.3 * offset + 2) * 55 + 200;
+                    let b = Math.sin(0.3 * offset + 4) * 55 + 200;
+                    this.color = new THREE.Color(r / 255, g / 255, b / 255);
+                }
+
+                this.state = this.index > 1 ? this.STATES.ACTIVE : this.STATES.STOPPED;
+                // speed progression
+                let rawSpeed = -0.1 - (this.index * 0.005);
+                this.speed = Math.max(rawSpeed, -4);
+                this.direction = this.speed;
+
+                // build mesh
+                let geometry = new THREE.BoxGeometry(this.dimension.width, this.dimension.height, this.dimension.depth);
+                geometry.applyMatrix(new THREE.Matrix4().makeTranslation(this.dimension.width/2, this.dimension.height/2, this.dimension.depth/2));
+                this.material = new THREE.MeshToonMaterial({ color: this.color, shading: THREE.FlatShading });
+                this.mesh = new THREE.Mesh(geometry, this.material);
+                this.mesh.position.set(this.position.x, this.position.y, this.position.z);
+
+                if (this.state === this.STATES.ACTIVE) {
+                    let startPos = Math.random() > 0.5 ? -this.MOVE_AMOUNT : this.MOVE_AMOUNT;
+                    this.position[this.workingPlane] = startPos;
+                    this.mesh.position[this.workingPlane] = startPos;
+                }
+            }
+
+            reverseDirection() {
+                this.direction = this.direction > 0 ? this.speed : Math.abs(this.speed);
+            }
+
+            place() {
+                if (this.state !== this.STATES.ACTIVE) return {};
+
+                this.state = this.STATES.STOPPED;
+                let workingPlane = this.workingPlane;
+                let workingDim = this.workingDimension;
+                let targetPos = this.targetBlock.position[workingPlane];
+                let currentPos = this.position[workingPlane];
+                let overlap = this.targetBlock.dimension[workingDim] - Math.abs(currentPos - targetPos);
+                let result = {
+                    plane: workingPlane,
+                    direction: this.direction
+                };
+
+                // PERFECT BONUS (full overlap)
+                if (this.dimension[workingDim] - overlap < 0.3) {
+                    overlap = this.dimension[workingDim];
+                    result.bonus = true;
+                    this.position.x = this.targetBlock.position.x;
+                    this.position.z = this.targetBlock.position.z;
+                    this.dimension.width = this.targetBlock.dimension.width;
+                    this.dimension.depth = this.targetBlock.dimension.depth;
+                }
+
+                if (overlap > 0) {
+                    let choppedDimensions = { ...this.dimension };
+                    choppedDimensions[workingDim] -= overlap;
+                    this.dimension[workingDim] = overlap;
+
+                    // placed piece (the overlapping part)
+                    let placedGeo = new THREE.BoxGeometry(this.dimension.width, this.dimension.height, this.dimension.depth);
+                    placedGeo.applyMatrix(new THREE.Matrix4().makeTranslation(this.dimension.width/2, this.dimension.height/2, this.dimension.depth/2));
+                    let placedMesh = new THREE.Mesh(placedGeo, this.material);
+                    placedMesh.position.set(this.position.x, this.position.y, this.position.z);
+
+                    // chopped piece (the excess)
+                    let choppedGeo = new THREE.BoxGeometry(choppedDimensions.width, choppedDimensions.height, choppedDimensions.depth);
+                    choppedGeo.applyMatrix(new THREE.Matrix4().makeTranslation(choppedDimensions.width/2, choppedDimensions.height/2, choppedDimensions.depth/2));
+                    let choppedMesh = new THREE.Mesh(choppedGeo, this.material);
+                    let choppedPos = { ...this.position };
+
+                    if (currentPos < targetPos) {
+                        this.position[workingPlane] = targetPos;
+                        choppedPos[workingPlane] = currentPos;
+                    } else {
+                        choppedPos[workingPlane] = currentPos + overlap;
+                    }
+                    placedMesh.position.set(this.position.x, this.position.y, this.position.z);
+                    choppedMesh.position.set(choppedPos.x, choppedPos.y, choppedPos.z);
+
+                    result.placed = placedMesh;
+                    if (!result.bonus) result.chopped = choppedMesh;
+                } else {
+                    this.state = this.STATES.MISSED;
+                }
+                this.dimension[workingDim] = overlap;
+                return result;
+            }
+
+            tick() {
+                if (this.state === this.STATES.ACTIVE) {
+                    let val = this.position[this.workingPlane];
+                    if (val > this.MOVE_AMOUNT || val < -this.MOVE_AMOUNT) this.reverseDirection();
+                    this.position[this.workingPlane] += this.direction;
+                    this.mesh.position[this.workingPlane] = this.position[this.workingPlane];
+                }
+            }
+        }
+
+        // ---------- GAME CONTROLLER ----------
+        class Game {
+            constructor() {
+                this.STATES = {
+                    LOADING: 'loading',
+                    PLAYING: 'playing',
+                    READY: 'ready',
+                    ENDED: 'ended',
+                    RESETTING: 'resetting'
+                };
+                this.blocks = [];
+                this.state = this.STATES.LOADING;
+                this.stage = new Stage();
+                this.mainContainer = document.getElementById('container');
+                this.scoreEl = document.getElementById('score');
+                this.startBtn = document.getElementById('start-button');
+                this.instructionsEl = document.getElementById('instructions');
+
+                this.newBlocksGroup = new THREE.Group();
+                this.placedBlocksGroup = new THREE.Group();
+                this.choppedBlocksGroup = new THREE.Group();
+                this.stage.add(this.newBlocksGroup);
+                this.stage.add(this.placedBlocksGroup);
+                this.stage.add(this.choppedBlocksGroup);
+
+                this.addBlock();  // first base block
+                this.updateState(this.STATES.READY);
+                this.animationLoop();
+
+                // unified action with cooldown (fix double tap/click)
+                const actionHandler = (e) => {
+                    if(e.type === 'touchstart') e.preventDefault();
+                    withCooldown(() => this.onAction(), 150);
+                };
+                document.addEventListener('keydown', (e) => { if(e.keyCode === 32) actionHandler(e); });
+                document.addEventListener('click', actionHandler);
+                document.addEventListener('touchstart', actionHandler, { passive: false });
+
+                // WebGL context loss fallback
+                const canvas = this.stage.renderer.domElement;
+                canvas.addEventListener('webglcontextlost', (event) => {
+                    event.preventDefault();
+                    alert('WebGL context lost – reloading game. Please refresh.');
+                }, false);
+            }
+
+            updateState(newState) {
+                // safe removal of all state classes
+                Object.keys(this.STATES).forEach(key => {
+                    this.mainContainer.classList.remove(this.STATES[key]);
+                });
+                this.mainContainer.classList.add(newState);
+                this.state = newState;
+            }
+
+            onAction() {
+                if(this.state === this.STATES.READY) this.startGame();
+                else if(this.state === this.STATES.PLAYING) this.placeBlock();
+                else if(this.state === this.STATES.ENDED) this.restartGame();
+            }
+
+            startGame() {
+                if(this.state !== this.STATES.PLAYING) {
+                    this.scoreEl.innerText = '0';
+                    this.updateState(this.STATES.PLAYING);
+                    this.addBlock();
+                }
+            }
+
+            restartGame() {
+                if(this.state === this.STATES.RESETTING) return;
+                this.updateState(this.STATES.RESETTING);
+                const oldBlocks = [...this.placedBlocksGroup.children];
+                const removeSpeed = 0.2;
+                const delayStep = 0.02;
+                for(let i = 0; i < oldBlocks.length; i++) {
+                    const block = oldBlocks[i];
+                    TweenLite.to(block.scale, removeSpeed, {
+                        x: 0, y: 0, z: 0,
+                        delay: (oldBlocks.length - i) * delayStep,
+                        ease: Power1.easeIn,
+                        onComplete: () => this.placedBlocksGroup.remove(block)
+                    });
+                    TweenLite.to(block.rotation, removeSpeed, { y: 0.5, delay: (oldBlocks.length - i) * delayStep, ease: Power1.easeIn });
+                }
+                // chopped pieces also vanish
+                const oldChopped = [...this.choppedBlocksGroup.children];
+                oldChopped.forEach(ch => {
+                    TweenLite.to(ch.scale, 0.15, { x: 0, y: 0, z: 0, onComplete: () => this.choppedBlocksGroup.remove(ch) });
+                });
+
+                const cameraMoveTime = removeSpeed * 2 + (oldBlocks.length * delayStep);
+                this.stage.setCamera(2, cameraMoveTime);
+
+                let countAnim = { val: this.blocks.length - 1 };
+                TweenLite.to(countAnim, cameraMoveTime, {
+                    val: 0,
+                    onUpdate: () => { this.scoreEl.innerText = Math.round(countAnim.val).toString(); }
+                });
+
+                this.blocks = this.blocks.slice(0, 1);
+                setTimeout(() => { this.startGame(); }, cameraMoveTime * 1000);
+            }
+
+            placeBlock() {
+                const currentBlock = this.blocks[this.blocks.length - 1];
+                if(!currentBlock || currentBlock.state !== currentBlock.STATES.ACTIVE) return;
+                const result = currentBlock.place();
+                this.newBlocksGroup.remove(currentBlock.mesh);
+                if(result.placed) this.placedBlocksGroup.add(result.placed);
+                if(result.chopped) {
+                    this.choppedBlocksGroup.add(result.chopped);
+                    // animation for flying piece
+                    const animPos = {};
+                    const animRot = {};
+                    const dir = result.direction;
+                    const plane = result.plane;
+                    if(plane === 'x') {
+                        animPos.x = result.chopped.position.x + (dir > 0 ? 40 : -40);
+                        animRot.y = 0.5;
+                        animRot.z = (Math.random() - 0.5) * 1.2;
+                    } else {
+                        animPos.z = result.chopped.position.z + (dir > 0 ? 40 : -40);
+                        animRot.x = 0.5;
+                        animRot.y = (Math.random() - 0.5) * 1.2;
+                    }
+                    animPos.y = '-=25';
+                    TweenLite.to(result.chopped.position, 0.9, { ...animPos, ease: Power2.easeIn });
+                    TweenLite.to(result.chopped.rotation, 0.9, { ...animRot, y: animRot.y, ease: Power1.easeOut });
+                    TweenLite.to(result.chopped.scale, 0.5, { x: 0.8, y: 0.8, z: 0.8, yoyo: true, repeat: 1 });
+                }
+                this.addBlock();
+            }
+
+            addBlock() {
+                const lastBlock = this.blocks[this.blocks.length - 1];
+                if(lastBlock && lastBlock.state === lastBlock.STATES.MISSED) {
+                    this.endGame();
+                    return;
+                }
+                // update UI score
+                this.scoreEl.innerText = (this.blocks.length - 1).toString();
+                const newBlock = new Block(lastBlock);
+                this.newBlocksGroup.add(newBlock.mesh);
+                this.blocks.push(newBlock);
+                this.stage.setCamera(this.blocks.length * 2, 0.28);
+                // hide instructions after 5 blocks
+                if(this.blocks.length >= 5) this.instructionsEl.classList.add('hide');
+            }
+
+            endGame() {
+                this.updateState(this.STATES.ENDED);
+            }
+
+            animationLoop() {
+                if(this.blocks.length) this.blocks[this.blocks.length - 1].tick();
+                this.stage.render();
+                requestAnimationFrame(() => this.animationLoop());
+            }
+        }
+
+        // start the game when page fully loaded (ensure DOM and libraries ready)
+        window.addEventListener('load', () => {
+            window.gameInstance = new Game();
+        });
+    })();
+</script>
+</body>
+</html>
